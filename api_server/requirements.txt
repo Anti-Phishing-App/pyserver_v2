@@ -6,6 +6,7 @@ gunicorn==22.0.0
 
 # --- File upload ---
 python-multipart==0.0.9
+Pillow==10.4.0
 
 # --- HTTP client & env ---
 httpx==0.27.0
