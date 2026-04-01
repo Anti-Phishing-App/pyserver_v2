@@ -33,6 +33,10 @@ services:
       - ./ai_server/data:/app/data
     environment:
       - PUBLIC_WS_BASE=wss://gupi99.p-e.kr
+      - CLOVA_INVOKE_URL=${CLOVA_INVOKE_URL}
+      - CLOVA_SECRET_KEY=${CLOVA_SECRET_KEY}
+      - CLOVA_API_URL=${CLOVA_API_URL}
+      - CLOVA_SECRET_KEY2=${CLOVA_SECRET_KEY2}
     restart: always
     networks:
       - phishing_network
