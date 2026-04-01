@@ -43,7 +43,8 @@ bcrypt==4.0.1
 email-validator==2.3.0
 
 # --- ML & NLP ---
-torch>=2.9.0
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.5.1+cpu
 #kobert-transformers>=0.6.0
 #transformers>=4.57.0
 konlpy>=0.6.0
