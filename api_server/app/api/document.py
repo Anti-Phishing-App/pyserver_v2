@@ -1,5 +1,6 @@
 """수정된 문서 분석 API (api_server/app/api/document.py)"""
 from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi.responses import JSONResponse
 import requests  # AI 서버에 요청을 보내기 위해 필요합니다.
 from app.config import UPLOAD_DIR, AI_SERVER_BASE_URL
 from app.utils.file_handler import save_upload_file
@@ -27,8 +28,16 @@ async def process_request(file: UploadFile = File(...)):
             files = {"file": (filename, f, file.content_type)}
             response = requests.post(AI_SERVER_URL, files=files, timeout=60) # 분석이 기니까 타임아웃 넉넉히
         
-        # AI 서버가 에러를 뱉었는지 확인
-        response.raise_for_status()
+        # AI 서버 에러는 그대로 전달해서 실제 원인을 확인할 수 있게 합니다.
+        if not response.ok:
+            detail = response.text
+            try:
+                payload = response.json()
+                detail = payload.get("detail", detail)
+            except ValueError:
+                pass
+            return JSONResponse(status_code=response.status_code, content={"detail": f"AI 서버 오류: {detail}"})
+
         result = response.json()
 
         # 3. 결과 반환
@@ -38,6 +47,9 @@ async def process_request(file: UploadFile = File(...)):
             **result
         }
 
+    except requests.exceptions.Timeout:
+        raise HTTPException(status_code=504, detail="AI 서버 응답 시간 초과")
+    except requests.exceptions.ConnectionError as e:
+        raise HTTPException(status_code=502, detail=f"AI 서버 연결 실패: {str(e)}")
     except requests.exceptions.RequestException as e:
-        # AI 서버가 죽었거나 연결이 안 될 때 에러 처리
-        raise HTTPException(status_code=500, detail=f"AI 서버 연결 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"AI 서버 요청 실패: {str(e)}")

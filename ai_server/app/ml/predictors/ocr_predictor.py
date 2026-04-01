@@ -12,10 +12,15 @@ import os
 class OCRError(Exception):
     pass
 
-API_URL = os.getenv("CLOVA_API_URL")
-SECRET_KEY2 = os.getenv("CLOVA_SECRET_KEY2")
+# 레거시 키(CLOVA_API_URL/CLOVA_SECRET_KEY2)와 현재 설정 키(CLOVA_INVOKE_URL/CLOVA_SECRET_KEY)를 모두 지원
+API_URL = os.getenv("CLOVA_API_URL") or os.getenv("CLOVA_INVOKE_URL")
+SECRET_KEY2 = os.getenv("CLOVA_SECRET_KEY2") or os.getenv("CLOVA_SECRET_KEY")
 
 def run_ocr(image_path: str):
+    if not API_URL:
+        raise OCRError("OCR API URL 미설정: CLOVA_API_URL 또는 CLOVA_INVOKE_URL 필요")
+    if not SECRET_KEY2:
+        raise OCRError("OCR Secret Key 미설정: CLOVA_SECRET_KEY2 또는 CLOVA_SECRET_KEY 필요")
     
     # 파일 확장자 알아내기
     try:
@@ -39,7 +44,7 @@ def run_ocr(image_path: str):
             files = [('file', f)]
             headers = {'X-OCR-SECRET': SECRET_KEY2}
             
-            response = requests.post(API_URL, headers=headers, data=payload, files=files)
+            response = requests.post(API_URL, headers=headers, data=payload, files=files, timeout=30)
 
             if response.status_code != 200:
                 raise OCRError(f"API Error - Status: {response.status_code}, Msg: {response.text}")
