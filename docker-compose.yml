@@ -31,6 +31,8 @@ services:
     volumes:
       - ./ai_server:/app
       - ./ai_server/data:/app/data
+    environment:
+      - PUBLIC_WS_BASE=wss://gupi99.p-e.kr
     restart: always
     networks:
       - phishing_network
