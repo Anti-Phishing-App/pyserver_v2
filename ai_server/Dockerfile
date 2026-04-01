@@ -5,7 +5,7 @@ WORKDIR /app
 # 시스템 패키지 (필요 최소)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    openjdk-17-jre-headless \
+    openjdk-21-jre-headless \
  && rm -rf /var/lib/apt/lists/*
 
 # 파이썬 의존성
