@@ -25,10 +25,23 @@ class ClovaSpeechClient:
         secret_key: str,
         host: str = "clovaspeech-gw.ncloud.com",
         port: int = 50051,
+        grpc_target: str | None = None,
     ):
         if not secret_key:
             raise ValueError("secret_key가 필요합니다.")
         self.secret_key = secret_key.strip()
+
+        if grpc_target:
+            grpc_target = grpc_target.strip()
+            if ":" in grpc_target:
+                host_part, _, port_part = grpc_target.rpartition(":")
+                host = host_part or host
+                try:
+                    port = int(port_part)
+                except ValueError:
+                    port = 50051
+            else:
+                host = grpc_target
 
         target = f"{host}:{port}"
         creds = grpc.ssl_channel_credentials()

@@ -34,7 +34,7 @@ from app.schemas.voice_phishing import (
     ComprehensiveResult,
 )
 from app.services.voice_phishing_service import get_detector
-from app.config import CLOVA_INVOKE_URL, CLOVA_SECRET_KEY
+from app.config import CLOVA_SPEECH_LONGFORM_INVOKE_URL, CLOVA_SPEECH_LONGFORM_SECRET_KEY
 
 router = APIRouter(prefix="/api/voice-phishing")
 
@@ -150,12 +150,16 @@ async def analyze_audio_file(
              -F "media=@recording.mp3" \\
              -F "analysis_method=hybrid"
     """
-    if not CLOVA_INVOKE_URL or not CLOVA_SECRET_KEY:
-        raise HTTPException(status_code=500, detail="CLOVA API 환경 변수가 설정되지 않았습니다.")
+    if not CLOVA_SPEECH_LONGFORM_INVOKE_URL or not CLOVA_SPEECH_LONGFORM_SECRET_KEY:
+        raise HTTPException(
+            status_code=500,
+            detail="CLOVA 장문(STT) 환경 변수가 설정되지 않았습니다. "
+            "(CLOVA_SPEECH_LONGFORM_INVOKE_URL, CLOVA_SPEECH_LONGFORM_SECRET_KEY)",
+        )
 
     try:
         # Step 1: STT (동기 방식으로 즉시 결과 반환)
-        headers = {"X-CLOVASPEECH-API-KEY": CLOVA_SECRET_KEY}
+        headers = {"X-CLOVASPEECH-API-KEY": CLOVA_SPEECH_LONGFORM_SECRET_KEY}
 
         params_dict = {
             "language": language,
@@ -173,7 +177,7 @@ async def analyze_audio_file(
             "params": (None, params_json, "application/json"),
         }
 
-        clova_url = f"{CLOVA_INVOKE_URL}/recognizer/upload"
+        clova_url = f"{CLOVA_SPEECH_LONGFORM_INVOKE_URL}/recognizer/upload"
 
         # STT 요청
         async with httpx.AsyncClient(timeout=httpx.Timeout(120.0)) as client:
