@@ -196,14 +196,30 @@ async def analyze_audio_file(
         # Step 2: 텍스트 추출
         text = stt_result.get("text", "")
         if not text or len(text) < 10:
+            short_msg = "텍스트가 너무 짧아서 분석할 수 없습니다 (최소 10자 필요)"
             return {
                 "transcription": {
                     "text": text,
-                    "stt_result": stt_result
+                    "confidence": stt_result.get("confidence"),
+                    "speaker": stt_result.get("speaker"),
+                    "stt_result": stt_result,
                 },
                 "phishing_analysis": {
-                    "error": "텍스트가 너무 짧아서 분석할 수 없습니다 (최소 10자 필요)"
-                }
+                    "immediate": {
+                        "level": 0,
+                        "probability": 0.0,
+                        "phishing_type": None,
+                        "keywords": [],
+                        "method": "word_based",
+                    },
+                    "comprehensive": {
+                        "is_phishing": False,
+                        "confidence": 0.0,
+                        "method": "kobert",
+                        "analyzed_length": len(text or ""),
+                    },
+                    "warning_message": short_msg,
+                },
             }
 
         # Step 3: 보이스피싱 탐지
