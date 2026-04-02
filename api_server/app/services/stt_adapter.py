@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio, contextlib, json, os
 from typing import AsyncIterator, Optional
 
-from app.config import CLOVA_SECRET_KEY
+from app.config import CLOVA_SPEECH_STREAMING_GRPC_TARGET, CLOVA_SPEECH_STREAMING_SECRET_KEY
 from grpc_client.clova_grpc_client import ClovaSpeechClient
 
 
@@ -70,13 +70,18 @@ class WebsocketSTTStream(BaseSTTStream):
 # --- CLOVA gRPC 기반 STT 구현 ---
 class GrpcSTTStream(BaseSTTStream):
     def __init__(self, sample_rate: int = 16000, language: str = "ko-KR"):
-        if not CLOVA_SECRET_KEY:
-            raise RuntimeError("CLOVA_SECRET_KEY 환경변수가 필요합니다.")
+        if not CLOVA_SPEECH_STREAMING_SECRET_KEY:
+            raise RuntimeError(
+                "CLOVA 실시간 STT용 CLOVA_SPEECH_STREAMING_SECRET_KEY(또는 레거시 CLOVA_SECRET_KEY)가 필요합니다."
+            )
         self.sample_rate = sample_rate
         self.language = language or "ko-KR"
         self._audio_q: asyncio.Queue[bytes | None] = asyncio.Queue()
         self._closed = asyncio.Event()
-        self._client = ClovaSpeechClient(secret_key=CLOVA_SECRET_KEY)
+        self._client = ClovaSpeechClient(
+            secret_key=CLOVA_SPEECH_STREAMING_SECRET_KEY,
+            grpc_target=CLOVA_SPEECH_STREAMING_GRPC_TARGET,
+        )
         config_payload = {
             "transcription": {"language": self._short_lang(self.language)},
             "semanticEpd": _semantic_epd_config(),

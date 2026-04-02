@@ -28,9 +28,32 @@ MAX_BYTES = MAX_UPLOAD_MB * 1024 * 1024  # MB를 바이트로 변환
 # ==========================================
 # CLOVA Speech API 설정 (STT)
 # ==========================================
-# 네이버 클로바 음성인식 API 사용을 위한 인증 정보
-CLOVA_INVOKE_URL = os.getenv("CLOVA_INVOKE_URL")  # gRPC 서버 URL
-CLOVA_SECRET_KEY = os.getenv("CLOVA_SECRET_KEY")  # API 시크릿 키
+# 장문: REST / 실시간: gRPC — 값은 .env(또는 컨테이너 환경변수)에서만 설정. 코드에 기본 시크릿 없음.
+
+
+def _env_first(*keys: str) -> str | None:
+    for k in keys:
+        v = os.getenv(k)
+        if v is not None and str(v).strip() != "":
+            return str(v).strip()
+    return None
+
+
+CLOVA_SPEECH_LONGFORM_INVOKE_URL = _env_first(
+    "CLOVA_SPEECH_LONGFORM_INVOKE_URL",
+    "CLOVA_INVOKE_URL",
+)
+CLOVA_SPEECH_LONGFORM_SECRET_KEY = _env_first(
+    "CLOVA_SPEECH_LONGFORM_SECRET_KEY",
+    "CLOVA_SECRET_KEY",
+)
+CLOVA_SPEECH_STREAMING_SECRET_KEY = _env_first(
+    "CLOVA_SPEECH_STREAMING_SECRET_KEY",
+    "CLOVA_SECRET_KEY",
+)
+# 비어 있으면 gRPC 클라이언트가 host/port 기본값 사용(clovaspeech-gw.ncloud.com:50051)
+CLOVA_SPEECH_STREAMING_GRPC_TARGET = _env_first("CLOVA_SPEECH_STREAMING_GRPC_TARGET")
+
 CLOVA_CLIENT_ID = os.getenv("CLOVA_CLIENT_ID")  # 클라이언트 ID
 CLOVA_CLIENT_SECRET = os.getenv("CLOVA_CLIENT_SECRET")  # 클라이언트 시크릿
 

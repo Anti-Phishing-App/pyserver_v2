@@ -6,7 +6,12 @@ from pydantic import BaseModel, Field
 import httpx
 import grpc
 
-from app.config import CLOVA_INVOKE_URL, CLOVA_SECRET_KEY
+from app.config import (
+    CLOVA_SPEECH_LONGFORM_INVOKE_URL,
+    CLOVA_SPEECH_LONGFORM_SECRET_KEY,
+    CLOVA_SPEECH_STREAMING_GRPC_TARGET,
+    CLOVA_SPEECH_STREAMING_SECRET_KEY,
+)
 from grpc_client.clova_grpc_client import ClovaSpeechClient
 from app.services.voice_phishing_service import create_session
 
@@ -34,10 +39,14 @@ async def transcribe_file_upload(
     음성 파일을 CLOVA Speech API로 보내 텍스트 변환 요청 (기본 async).
     성공 시 token 반환.
     """
-    if not CLOVA_INVOKE_URL or not CLOVA_SECRET_KEY:
-        raise HTTPException(status_code=500, detail="CLOVA API 환경 변수가 설정되지 않았습니다.")
+    if not CLOVA_SPEECH_LONGFORM_INVOKE_URL or not CLOVA_SPEECH_LONGFORM_SECRET_KEY:
+        raise HTTPException(
+            status_code=500,
+            detail="CLOVA 장문(STT) 환경 변수가 설정되지 않았습니다. "
+            "(CLOVA_SPEECH_LONGFORM_INVOKE_URL, CLOVA_SPEECH_LONGFORM_SECRET_KEY)",
+        )
 
-    headers = {"X-CLOVASPEECH-API-KEY": CLOVA_SECRET_KEY}
+    headers = {"X-CLOVASPEECH-API-KEY": CLOVA_SPEECH_LONGFORM_SECRET_KEY}
 
     # 파일 크기 읽기
     file_bytes = await media.read()
@@ -70,7 +79,7 @@ async def transcribe_file_upload(
         "params": (None, params_json, "application/json"),
     }
 
-    clova_url = f"{CLOVA_INVOKE_URL}/recognizer/upload"
+    clova_url = f"{CLOVA_SPEECH_LONGFORM_INVOKE_URL}/recognizer/upload"
 
     async with httpx.AsyncClient(timeout=httpx.Timeout(60.0)) as client:
         try:
@@ -120,11 +129,15 @@ async def clova_callback(request: Request):
 @router.get("/api/transcribe/status/{token}")
 async def transcribe_status(token: str):
     """upload API에서 받은 token으로 상태/결과 조회"""
-    if not CLOVA_INVOKE_URL or not CLOVA_SECRET_KEY:
-        raise HTTPException(status_code=500, detail="CLOVA API 환경 변수가 설정되지 않았습니다.")
+    if not CLOVA_SPEECH_LONGFORM_INVOKE_URL or not CLOVA_SPEECH_LONGFORM_SECRET_KEY:
+        raise HTTPException(
+            status_code=500,
+            detail="CLOVA 장문(STT) 환경 변수가 설정되지 않았습니다. "
+            "(CLOVA_SPEECH_LONGFORM_INVOKE_URL, CLOVA_SPEECH_LONGFORM_SECRET_KEY)",
+        )
 
-    headers = {"X-CLOVASPEECH-API-KEY": CLOVA_SECRET_KEY}
-    clova_url = f"{CLOVA_INVOKE_URL}/recognizer/{token}"
+    headers = {"X-CLOVASPEECH-API-KEY": CLOVA_SPEECH_LONGFORM_SECRET_KEY}
+    clova_url = f"{CLOVA_SPEECH_LONGFORM_INVOKE_URL}/recognizer/{token}"
 
     async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
         try:
@@ -163,8 +176,10 @@ async def websocket_transcribe_stream(websocket: WebSocket, lang: str = "ko-KR",
     phishing_session = None
 
     try:
-        if not CLOVA_SECRET_KEY:
-            raise RuntimeError("CLOVA_SECRET_KEY 환경변수가 필요합니다.")
+        if not CLOVA_SPEECH_STREAMING_SECRET_KEY:
+            raise RuntimeError(
+                "CLOVA 실시간 STT용 CLOVA_SPEECH_STREAMING_SECRET_KEY(또는 레거시 CLOVA_SECRET_KEY)가 필요합니다."
+            )
 
         # 보이스피싱 탐지 세션 초기화
         if enable_phishing_detection:
@@ -174,7 +189,10 @@ async def websocket_transcribe_stream(websocket: WebSocket, lang: str = "ko-KR",
                 print(f"보이스피싱 탐지 초기화 실패: {e}")
                 enable_phishing_detection = False
 
-        grpc_client = ClovaSpeechClient(secret_key=CLOVA_SECRET_KEY)
+        grpc_client = ClovaSpeechClient(
+            secret_key=CLOVA_SPEECH_STREAMING_SECRET_KEY,
+            grpc_target=CLOVA_SPEECH_STREAMING_GRPC_TARGET,
+        )
         lang_short = (lang or "ko-KR").split("-")[0].lower()
 
         config_dict = {
