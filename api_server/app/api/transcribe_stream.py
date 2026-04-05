@@ -26,6 +26,7 @@ router = APIRouter(prefix="/api/transcribe", tags=["Transcribe (Realtime)"])
 
 logger = logging.getLogger("transcribe_stream")
 
+active_connections = 0
 
 def _stt_factory(sample_rate: int):
     provider = os.getenv("STT_PROVIDER", "grpc")  # "grpc" | "ws"
@@ -80,6 +81,11 @@ async def transcribe_ws(
     - client: "web", "android" 등 구분용 (디버깅에 도움)
     """
     await ws.accept()
+
+    global active_connections
+    active_connections += 1
+    logger.info(f"📊 [PERF] 현재 실시간 접속 세션 수: {active_connections}")
+    
     logger.info(f"[WS OPEN] client={client} sr={sr} lang={lang}")
     await _send_json(ws, {"kind": "state", "text": "ready", "t": _now()})
 
@@ -116,6 +122,9 @@ async def transcribe_ws(
         for t in (recv_task, send_task):
             if not t.done():
                 t.cancel()
+
+        active_connections -= 1
+        logger.info(f"📊 [PERF] 세션 종료. 남은 접속자: {active_connections}")
 
         logger.info(f"[WS CLOSED] client={client}")
 
@@ -191,7 +200,13 @@ async def _pump(ws: WebSocket, stt, session: HybridPhishingSession, client: str)
                 if not text:
                     continue
 
+                analysis_start_time = time.perf_counter()
                 fragment = session.process_fragment(text, is_final)
+                analysis_end_time = time.perf_counter()
+
+                ai_latency = (analysis_end_time - analysis_start_time) * 1000
+                logger.info(f"📊 [RESULT] AI 분석 시간(ms): {ai_latency:.2f}ms (접속자: {active_connections}명)")
+                
                 payload = {
                     "kind": "partial" if not is_final else "final",
                     "text": text,
