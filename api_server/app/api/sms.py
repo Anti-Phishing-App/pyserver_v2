@@ -20,6 +20,8 @@ SMS 피싱 탐지 API 라우터
 from fastapi import APIRouter, HTTPException
 from datetime import datetime
 
+import time
+
 from app.schemas.sms import (
     SmsDetectRequest,
     SmsDetectResponse,
@@ -79,6 +81,9 @@ async def detect_sms_phishing(request: SmsDetectRequest):
 
         text_score = 0.0
         url_score = 0.0
+
+        ai_start_time = time.time()
+
 
         # ==================== 1. 텍스트 분석 (SMS 특화 키워드) ====================
         if request.texts and full_text and len(full_text) >= 5:
@@ -194,6 +199,9 @@ async def detect_sms_phishing(request: SmsDetectRequest):
 
             except Exception as e:
                 print(f"URL 분석 전체 실패: {e}")
+
+        ai_duration_ms = (time.time() - ai_start_time) * 1000
+        print(f"📊 [RESULT] AI 분석 시간(텍스트+URL): {ai_duration_ms:.2f}ms")
 
         # ==================== 3. 종합 점수 계산 ====================
         # 텍스트 가중치 60%, URL 가중치 40%
