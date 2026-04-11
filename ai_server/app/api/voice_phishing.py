@@ -153,7 +153,7 @@ async def analyze_audio_file(
     """
 
     server_start_time = time.time()
-    print(f"\n[PERF] === VOICE_ANALYSIS_REQUEST_START: {server_start_time} ===")
+    print(f"\n[PERF] === VOICE_ANALYSIS_REQUEST_START: {server_start_time} ===" , flush=True)
     
     if not CLOVA_SPEECH_LONGFORM_INVOKE_URL or not CLOVA_SPEECH_LONGFORM_SECRET_KEY:
         raise HTTPException(
@@ -193,7 +193,7 @@ async def analyze_audio_file(
 
                 stt_end_time = time.time()
                 stt_duration = (stt_end_time - server_start_time) * 1000
-                print(f"   [RESULT] 서버 내부 STT 처리 시간: {stt_duration:.2f}ms")
+                print(f"   [RESULT] 서버 내부 STT 처리 시간: {stt_duration:.2f}ms" , flush=True)
             
             except httpx.HTTPStatusError as e:
                 raise HTTPException(
@@ -264,9 +264,9 @@ async def analyze_audio_file(
         ai_duration = (server_end_time - ai_inference_start) * 1000
         total_server_duration = (server_end_time - server_start_time) * 1000
         
-        print(f"   [RESULT] 순수 AI 분석 시간: {ai_duration:.2f}ms")
-        print(f"   [RESULT] 서버 전체 처리 시간(STT+AI): {total_server_duration:.2f}ms")
-        print(f"[PERF] === VOICE_ANALYSIS_REQUEST_END: {server_end_time} ===\n")
+        print(f"   [RESULT] 순수 AI 분석 시간: {ai_duration:.2f}ms" , flush=True)
+        print(f"   [RESULT] 서버 전체 처리 시간(STT+AI): {total_server_duration:.2f}ms" , flush=True)
+        print(f"[PERF] === VOICE_ANALYSIS_REQUEST_END: {server_end_time} ===\n" , flush=True)
 
         return {
             "transcription": {
