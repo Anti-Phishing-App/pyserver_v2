@@ -201,7 +201,7 @@ async def detect_sms_phishing(request: SmsDetectRequest):
                 print(f"URL 분석 전체 실패: {e}")
 
         ai_duration_ms = (time.time() - ai_start_time) * 1000
-        print(f"📊 [RESULT] AI 분석 시간(텍스트+URL): {ai_duration_ms:.2f}ms")
+        print(f"📊 [RESULT] AI 분석 시간(텍스트+URL): {ai_duration_ms:.2f}ms" , flush=True)
 
         # ==================== 3. 종합 점수 계산 ====================
         # 텍스트 가중치 60%, URL 가중치 40%
