@@ -83,10 +83,15 @@ async def transcribe_file_upload(
 
     clova_url = f"{CLOVA_SPEECH_LONGFORM_INVOKE_URL}/recognizer/upload"
 
+    stt_start_time = time.time()
+
     async with httpx.AsyncClient(timeout=httpx.Timeout(60.0)) as client:
         try:
             resp = await client.post(clova_url, headers=headers, files=files)
             resp.raise_for_status()
+
+            stt_duration = (time.time() - stt_start_time) * 1000
+            print(f"   [RESULT] 서버 내부 STT(CLOVA) 처리 시간: {stt_duration:.2f}ms")
             
             return {"mode": completion, "response": resp.json()}
         except httpx.HTTPStatusError as e:
