@@ -40,8 +40,7 @@ async def transcribe_file_upload(
     음성 파일을 CLOVA Speech API로 보내 텍스트 변환 요청 (기본 async).
     성공 시 token 반환.
     """
-    server_start_time = time.time()
-    
+        
     if not CLOVA_SPEECH_LONGFORM_INVOKE_URL or not CLOVA_SPEECH_LONGFORM_SECRET_KEY:
         raise HTTPException(
             status_code=500,
@@ -88,13 +87,6 @@ async def transcribe_file_upload(
         try:
             resp = await client.post(clova_url, headers=headers, files=files)
             resp.raise_for_status()
-
-            server_end_time = time.time()
-            total_latency_ms = (server_end_time - server_start_time) * 1000
-            
-            print(f"📊 [RESULT] 결과 수신 대기 시간: {total_latency_ms:.2f}ms")
-            print(f"📊 [RESULT] 위험 경고 시간: {total_latency_ms:.2f}ms")
-            print(f"📊 [RESULT] End-to-End 서버 지연: {total_latency_ms:.2f}ms")
             
             return {"mode": completion, "response": resp.json()}
         except httpx.HTTPStatusError as e:
