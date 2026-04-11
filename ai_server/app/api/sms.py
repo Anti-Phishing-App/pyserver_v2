@@ -20,6 +20,8 @@ SMS 피싱 탐지 API 라우터
 from fastapi import APIRouter, HTTPException
 from datetime import datetime
 
+import time
+
 from app.schemas.sms import (
     SmsDetectRequest,
     SmsDetectResponse,
@@ -68,6 +70,9 @@ async def detect_sms_phishing(request: SmsDetectRequest):
         ```
     """
     try:
+
+        sms_ai_start = time.time()
+        
         # 텍스트 결합 (앱에서 이미 문장 단위로 분리해서 보냄)
         full_text = " ".join(request.texts)
 
@@ -229,6 +234,9 @@ async def detect_sms_phishing(request: SmsDetectRequest):
         else:
             warning_message = "✅ 안전: 특별한 위험 요소가 감지되지 않았습니다."
 
+        sms_ai_duration = (time.time() - sms_ai_start) * 1000
+        print(f"[RESULT] AI 분석 시간(텍스트+URL): {sms_ai_duration:.2f}ms", flush=True)
+        
         # 응답 구성
         return SmsDetectResponse(
             phishing_score=round(final_score, 2),
