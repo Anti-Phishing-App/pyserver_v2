@@ -26,6 +26,7 @@ import json
 import asyncio
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 import httpx
+import time
 
 from app.schemas.voice_phishing import (
     TextAnalysisRequest,
@@ -150,6 +151,10 @@ async def analyze_audio_file(
              -F "media=@recording.mp3" \\
              -F "analysis_method=hybrid"
     """
+
+    server_start_time = time.time()
+    print(f"\n[PERF] === VOICE_ANALYSIS_REQUEST_START: {server_start_time} ===")
+    
     if not CLOVA_SPEECH_LONGFORM_INVOKE_URL or not CLOVA_SPEECH_LONGFORM_SECRET_KEY:
         raise HTTPException(
             status_code=500,
@@ -185,6 +190,11 @@ async def analyze_audio_file(
                 resp = await client.post(clova_url, headers=headers, files=files)
                 resp.raise_for_status()
                 stt_result = resp.json()
+
+                stt_end_time = time.time()
+                stt_duration = (stt_end_time - server_start_time) * 1000
+                print(f"   [RESULT] 서버 내부 STT 처리 시간: {stt_duration:.2f}ms")
+            
             except httpx.HTTPStatusError as e:
                 raise HTTPException(
                     status_code=e.response.status_code,
@@ -224,6 +234,9 @@ async def analyze_audio_file(
             }
 
         # Step 3: 보이스피싱 탐지
+
+        ai_inference_start = time.time()
+        
         detector = get_detector()
 
         immediate_result = None
@@ -246,6 +259,14 @@ async def analyze_audio_file(
         if comprehensive_result.is_phishing:
             confidence_pct = comprehensive_result.confidence * 100
             warning_message = f"🚨 보이스피싱 탐지! (신뢰도: {confidence_pct:.1f}%)"
+
+        server_end_time = time.time()
+        ai_duration = (server_end_time - ai_inference_start) * 1000
+        total_server_duration = (server_end_time - server_start_time) * 1000
+        
+        print(f"   [RESULT] 순수 AI 분석 시간: {ai_duration:.2f}ms")
+        print(f"   [RESULT] 서버 전체 처리 시간(STT+AI): {total_server_duration:.2f}ms")
+        print(f"[PERF] === VOICE_ANALYSIS_REQUEST_END: {server_end_time} ===\n")
 
         return {
             "transcription": {
