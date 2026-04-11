@@ -91,7 +91,7 @@ async def transcribe_file_upload(
             resp.raise_for_status()
 
             stt_duration = (time.time() - stt_start_time) * 1000
-            print(f"   [RESULT] 서버 내부 STT(CLOVA) 처리 시간: {stt_duration:.2f}ms")
+            print(f"   [RESULT] 서버 내부 STT(CLOVA) 처리 시간: {stt_duration:.2f}ms" , flush=True)
             
             return {"mode": completion, "response": resp.json()}
         except httpx.HTTPStatusError as e:
