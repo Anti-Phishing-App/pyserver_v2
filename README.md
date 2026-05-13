@@ -8,7 +8,7 @@
 
 ## 배포 절차
 ```bash
-cd /opt/apps/phishing-api/pyserver
+cd opt/apps/phishing-api/pyserver
 git fetch v2
 git pull --ff-only v2 main
 docker compose down --remove-orphans
