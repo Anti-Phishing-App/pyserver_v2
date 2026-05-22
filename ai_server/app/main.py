@@ -16,7 +16,7 @@ app = FastAPI(title="AI Analysis Worker Server", version="1.0.0")
 TEMP_DIR = "temp_analysis"
 os.makedirs(TEMP_DIR, exist_ok=True)
 
-@app.post("/analyze/document")
+@app.post("/process-request")
 def analyze_doc_task(file: UploadFile = File(...)):
     """API 서버로부터 파일을 전달받아 AI 모델로 분석을 수행합니다."""
     file_path = os.path.join(TEMP_DIR, file.filename)
