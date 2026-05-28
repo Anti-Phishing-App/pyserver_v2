@@ -23,10 +23,13 @@
 실시간 스트리밍 탐지는 /ws/transcribe/stream (transcribe.py)에서 처리됩니다.
 """
 import json
+import logging
 import asyncio
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 import httpx
 import time
+
+logger = logging.getLogger(__name__)
 
 from app.schemas.voice_phishing import (
     TextAnalysisRequest,
@@ -105,6 +108,8 @@ async def analyze_text(request: TextAnalysisRequest):
             warning_message=warning_message
         )
 
+    except HTTPException:
+        raise
     except FileNotFoundError as e:
         raise HTTPException(
             status_code=500,
@@ -116,6 +121,7 @@ async def analyze_text(request: TextAnalysisRequest):
             detail=f"필요한 라이브러리가 설치되지 않았습니다: {e}"
         )
     except Exception as e:
+        logger.exception("analyze_text failed")
         raise HTTPException(
             status_code=500,
             detail=f"보이스피싱 분석 중 오류 발생: {e}"
@@ -254,8 +260,19 @@ async def analyze_audio_file(
         elif immediate_result.level == 1:
             warning_message = "ℹ️ 주의: 일부 단어에 주의가 필요합니다."
 
-        comprehensive = detector.detect_comprehensive(text)
-        comprehensive_result = ComprehensiveResult(**comprehensive)
+        try:
+            comprehensive = detector.detect_comprehensive(text)
+            comprehensive_result = ComprehensiveResult(**comprehensive)
+        except FileNotFoundError as e:
+            logger.warning("ML model unavailable for comprehensive analysis: %s", e)
+            comprehensive_result = ComprehensiveResult(
+                is_phishing=False,
+                confidence=0.0,
+                method="tfidf_rf",
+                analyzed_length=len(text),
+            )
+            if not warning_message:
+                warning_message = "ML 모델 미구성: 단어 기반 분석 결과만 반영되었습니다."
         if comprehensive_result.is_phishing:
             confidence_pct = comprehensive_result.confidence * 100
             warning_message = f"🚨 보이스피싱 탐지! (신뢰도: {confidence_pct:.1f}%)"
@@ -276,12 +293,14 @@ async def analyze_audio_file(
                 "stt_result": stt_result
             },
             "phishing_analysis": {
-                "immediate": immediate_result.dict() if immediate_result else None,
-                "comprehensive": comprehensive_result.dict() if comprehensive_result else None,
+                "immediate": immediate_result.model_dump() if immediate_result else None,
+                "comprehensive": comprehensive_result.model_dump() if comprehensive_result else None,
                 "warning_message": warning_message
             }
         }
 
+    except HTTPException:
+        raise
     except FileNotFoundError as e:
         raise HTTPException(
             status_code=500,
@@ -293,6 +312,7 @@ async def analyze_audio_file(
             detail=f"필요한 라이브러리가 설치되지 않았습니다: {e}"
         )
     except Exception as e:
+        logger.exception("analyze_audio failed")
         raise HTTPException(
             status_code=500,
             detail=f"보이스피싱 분석 중 오류 발생: {e}"
