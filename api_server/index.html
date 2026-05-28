@@ -62,7 +62,7 @@
 <body>
   <header>
     <h1>🎙️ 실시간 음성 스트리밍 테스트</h1>
-    <p class="sub">마이크 → 16k PCM(<b>20ms×5 = 100ms 배치</b>) → WebSocket(<code>/api/transcribe/ws</code>) → 인식 결과</p>
+    <p class="sub">마이크 → 16k PCM(<b>20ms×5 = 100ms 배치</b>) → AI 서버 WebSocket(<code>:8001/api/transcribe/ws</code>) → 인식 결과</p>
   </header>
 
   <main>
@@ -203,9 +203,11 @@
       wsDot.classList.toggle('on', !!on);
       wsStatus.textContent = on ? 'Connected' : 'Disconnected';
     }
+    const AI_SERVER_PORT = '8001';
+
     function defaultWsUrl(lang) {
       const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-      return `${proto}://${location.host}/api/transcribe/ws?sr=16000&lang=${encodeURIComponent(lang)}`;
+      return `${proto}://${location.hostname}:${AI_SERVER_PORT}/api/transcribe/ws?sr=16000&lang=${encodeURIComponent(lang)}`;
     }
     function fmtDur(ms) {
       const s = Math.floor(ms/1000), m = Math.floor(s/60), ss = s%60;
@@ -265,7 +267,7 @@
       const conf = Number(data.confidence ?? 0) * 100;
       kobertValEl.textContent = data.is_phishing ? `위험 (${conf.toFixed(1)}%)` : `정상 (${conf.toFixed(1)}%)`;
       const len = data.analyzed_length ?? 0;
-      kobertInfoEl.textContent = `분석 길이 ${len}자 · ${data.method || 'kobert'}`;
+      kobertInfoEl.textContent = `분석 길이 ${len}자 · ${data.method || 'ml'}`;
     }
 
     function renderHistory(entries) {

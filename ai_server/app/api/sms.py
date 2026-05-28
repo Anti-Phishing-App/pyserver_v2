@@ -13,7 +13,7 @@ SMS 피싱 탐지 API 라우터
        - 모델 로드 상태 및 서비스 가용성 체크
 
 분석 방법:
-    - 텍스트: SMS 피싱 특화 키워드 탐지
+    - 텍스트: ML(70%) + SMS 피싱 키워드(30%)
     - URL: 피싱 사이트 탐지기(URL 기반 + ML + PhishTank) 사용
     - 종합 점수: 텍스트 분석(60%) + URL 분석(40%) 가중치 적용
 """
@@ -30,6 +30,7 @@ from app.schemas.sms import (
 )
 from app.services.sms_keyword_detector import detect_sms_keywords_batch
 from app.services.phishing_site_detector import get_detector as get_site_detector
+from app.services.tfidf_phishing_ml import get_sms_ml_detector
 
 router = APIRouter(prefix="/api/sms")
 
@@ -85,30 +86,55 @@ async def detect_sms_phishing(request: SmsDetectRequest):
         text_score = 0.0
         url_score = 0.0
 
-        # ==================== 1. 텍스트 분석 (SMS 특화 키워드) ====================
+        # ==================== 1. 텍스트 분석 (ML 70% + 키워드 30%) ====================
         if request.texts and full_text and len(full_text) >= 5:
             try:
-                # SMS 피싱 특화 키워드 탐지
                 keyword_result = detect_sms_keywords_batch(request.texts)
+                keyword_score = 0.0
+                keyword_risk_level = 0
+                keywords: list = []
 
                 if not keyword_result.get("error"):
-                    # 텍스트 분석 결과 구성
-                    text_analysis_result = TextAnalysisResult(
-                        risk_level=keyword_result["risk_level"],
-                        risk_probability=keyword_result["total_score"] * 100,  # 0~100 스케일
-                        phishing_type=None,  # SMS는 특정 유형 분류 없음
-                        keywords=keyword_result["keywords"],
-                        is_phishing_kobert=None,  # SMS는 KoBERT 사용 안 함
-                        kobert_confidence=None
-                    )
+                    keyword_score = keyword_result["total_score"] * 100
+                    keyword_risk_level = keyword_result["risk_level"]
+                    keywords = keyword_result["keywords"]
+                    all_keywords.extend(keywords)
 
-                    all_keywords.extend(keyword_result["keywords"])
+                ml_score = 0.0
+                ml_is_phishing = False
+                ml_confidence = 0.0
+                try:
+                    ml_result = get_sms_ml_detector().predict(full_text, min_chars=5)
+                    ml_confidence = ml_result["confidence"]
+                    ml_is_phishing = ml_result["is_phishing"]
+                    ml_score = ml_confidence * 100
+                except Exception as ml_error:
+                    print(f"SMS ML 분석 실패 (키워드만 사용): {ml_error}")
 
-                    # 텍스트 점수 계산 (키워드 점수 기반)
-                    text_score = keyword_result["total_score"] * 100  # 0~100 스케일
+                if ml_score > 0 or keyword_score > 0:
+                    text_score = ml_score * 0.7 + keyword_score * 0.3
+                elif not keyword_result.get("error"):
+                    text_score = keyword_score
+
+                if text_score >= 70:
+                    combined_risk_level = 3
+                elif text_score >= 50:
+                    combined_risk_level = 2
+                elif text_score >= 30:
+                    combined_risk_level = 1
+                else:
+                    combined_risk_level = keyword_risk_level
+
+                text_analysis_result = TextAnalysisResult(
+                    risk_level=combined_risk_level,
+                    risk_probability=round(text_score, 2),
+                    phishing_type=None,
+                    keywords=keywords,
+                    is_phishing_kobert=ml_is_phishing if ml_score > 0 else None,
+                    kobert_confidence=ml_confidence if ml_score > 0 else None,
+                )
 
             except Exception as e:
-                # 텍스트 분석 실패시 로그 남기고 계속 진행
                 print(f"텍스트 분석 실패: {e}")
 
         # ==================== 2. URL 분석 ====================
@@ -266,10 +292,19 @@ async def health_check():
     """
     try:
         site_detector = get_site_detector()
+        sms_ml_loaded = False
+        sms_ml_error = None
+        try:
+            get_sms_ml_detector()
+            sms_ml_loaded = True
+        except Exception as e:
+            sms_ml_error = str(e)
 
         return {
             "status": "ok",
             "sms_keyword_detector": "enabled",
+            "sms_ml_model_loaded": sms_ml_loaded,
+            "sms_ml_error": sms_ml_error,
             "phishing_site_model_loaded": site_detector.model is not None,
             "phishtank_db_loaded": len(site_detector.phishtank_db) > 0,
             "phishtank_db_size": len(site_detector.phishtank_db),

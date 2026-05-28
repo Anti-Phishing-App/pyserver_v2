@@ -1,11 +1,9 @@
 """
 보이스피싱 탐지 서비스
 
-KoBERT 모델과 단어 기반 위험도 측정을 사용하여 텍스트가 보이스피싱인지 탐지합니다.
-하이브리드 방식으로 즉시 응답(단어 기반)과 누적 분석(KoBERT)을 모두 지원합니다.
+TF-IDF+RandomForest ML과 단어 기반 위험도 측정을 결합합니다.
+하이브리드 방식으로 즉시 응답(단어 기반)과 누적 분석(ML)을 지원합니다.
 """
-import torch
-import numpy as np
 from typing import Dict, Tuple, List, Optional
 from konlpy.tag import Okt
 import pandas as pd
@@ -15,50 +13,24 @@ import os
 import time
 import uuid
 
+from app.services.tfidf_phishing_ml import get_phone_ml_detector
+
 # 프로젝트 루트 경로
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
-
-
-def lazy_import_kobert():
-    """
-    KoBERT 관련 모듈을 지연 로딩
-
-    KoBERT 의존성이 없을 경우 명확한 에러 메시지를 제공합니다.
-
-    Returns:
-        Tuple: (BERTClassifier, get_kobert_model, get_tokenizer)
-
-    Raises:
-        ImportError: KoBERT 의존성이 설치되지 않은 경우
-    """
-    try:
-        from app.ml.kobert_classifier.BERTClassifier import BERTClassifier
-        from kobert_transformers import get_kobert_model, get_tokenizer
-        return BERTClassifier, get_kobert_model, get_tokenizer
-    except ImportError as e:
-        raise ImportError(
-            f"KoBERT 의존성을 로드할 수 없습니다: {e}\n"
-            "다음 패키지를 설치하세요: pip install kobert-transformers torch konlpy pandas transformers"
-        )
 
 
 class VoicePhishingDetector:
     """
     보이스피싱 탐지기
 
-    KoBERT 딥러닝 모델과 단어 기반 통계 분석을 결합하여
-    보이스피싱 여부를 판단합니다.
+    TF-IDF+RF ML과 단어 기반 통계 분석을 결합하여 보이스피싱 여부를 판단합니다.
 
     Features:
-        - KoBERT 모델을 통한 정확한 보이스피싱 분류
+        - 학습된 통화 텍스트 ML 분류
         - 단어 가중치 기반 실시간 위험도 계산
         - 범죄 유형 분류 (대출사기형 vs 수사기관사칭형)
 
     Attributes:
-        bertmodel: KoBERT 기반 모델
-        tokenizer: KoBERT 토크나이저
-        device: 연산 장치 (cuda 또는 cpu)
-        model: 학습된 BERTClassifier 모델
         okt: Okt 형태소 분석기
         df: 위험 단어 가중치 데이터프레임
         type_df: 범죄 유형별 단어 가중치 데이터프레임
@@ -71,90 +43,24 @@ class VoicePhishingDetector:
 
     def __init__(self):
         """보이스피싱 탐지기 초기화"""
-        self.device = torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
-        self.BERTClassifier = None
-        self.bertmodel = None
-        self.tokenizer = None
-        self.model = None
-        self._kobert_ready = False
-        self._kobert_error: Optional[Exception] = None
-
-        self.kobert_threshold = float(os.getenv("PHISHING_KOBERT_THRESHOLD", "0.35"))
+        self._ml_detector = None
+        self.comprehensive_min_chars = int(
+            os.getenv("PHONE_ML_MIN_CHARS", os.getenv("PHISHING_KOBERT_MIN_CHARS", "10"))
+        )
 
         # 단어 기반 탐지 초기화
         self.okt = Okt()
         self.df = pd.read_csv(BASE_DIR / "data/csv/500_가중치.csv", encoding='utf-8')
         self.type_df = pd.read_csv(BASE_DIR / "data/csv/type_token_가중치.csv", encoding='utf-8')
 
-    def _ensure_kobert_ready(self):
-        """
-        KoBERT 모델이 필요한 시점에만 로딩하여 네트워크 의존성을 늦춘다.
-        """
-        if self._kobert_ready:
-            return
-        if self._kobert_error:
-            raise self._kobert_error
+    def _get_ml_detector(self):
+        if self._ml_detector is None:
+            self._ml_detector = get_phone_ml_detector()
+        return self._ml_detector
 
-        try:
-            BERTClassifier, get_kobert_model, get_tokenizer = lazy_import_kobert()
-            self.BERTClassifier = BERTClassifier
-            self.bertmodel = get_kobert_model()
-            self.tokenizer = get_tokenizer()
-            self.model = self.BERTClassifier(self.bertmodel, dr_rate=0.4).to(self.device)
-            model_path = BASE_DIR / "data/models/kobert/train.pt"
-            self.model.load_state_dict(torch.load(model_path, map_location=self.device, weights_only=False), strict=False)
-            self.model.eval()
-            self._kobert_ready = True
-        except Exception as exc:  # KoBERT 초기화 실패 시 예외를 기억해 두고 재사용
-            self._kobert_error = exc
-            raise
-
-    def _predict_kobert(self, text: str) -> Tuple[bool, float]:
-        """
-        KoBERT 모델로 보이스피싱 여부 예측
-
-        Args:
-            text: 분석할 텍스트
-
-        Returns:
-            Tuple[bool, float]: (보이스피싱 여부, 신뢰도)
-                - is_phishing: True이면 보이스피싱, False이면 일반 전화
-                - confidence: 예측 신뢰도 (0.0 ~ 1.0)
-        """
-        self._ensure_kobert_ready()
-
-        inputs = self.tokenizer(
-            text,
-            return_tensors='pt',
-            truncation=True,
-            padding='max_length',
-            max_length=64
-        )
-
-        token_ids = inputs['input_ids'].to(self.device)
-        attention_mask = inputs['attention_mask'].to(self.device)
-        token_type_ids = inputs.get('token_type_ids', torch.zeros_like(token_ids)).to(self.device)
-
-        # 모델 추론
-        with torch.no_grad():
-            # valid_length 계산 (attention_mask의 합)
-            valid_length = attention_mask.sum(dim=1)
-
-            out = self.model(token_ids, valid_length, token_type_ids)
-
-            logits = out.detach().cpu().numpy()
-
-            # Confidence 계산 (softmax)
-            exp_logits = np.exp(logits - np.max(logits))
-            softmax = exp_logits / exp_logits.sum()
-            prob_phishing = float(softmax[0][1])
-
-            threshold = getattr(self, "kobert_threshold", float(os.getenv("PHISHING_KOBERT_THRESHOLD", "0.35")))
-            self.kobert_threshold = threshold
-            is_phishing = bool(prob_phishing >= threshold)
-            confidence = prob_phishing
-
-            return is_phishing, confidence
+    def _predict_ml(self, text: str) -> Tuple[bool, float]:
+        result = self._get_ml_detector().predict(text, min_chars=self.comprehensive_min_chars)
+        return result["is_phishing"], result["confidence"]
 
     def _calculate_risk_level(self, text: str) -> Tuple[int, float, str, List[str], List[Dict]]:
         """
@@ -298,9 +204,9 @@ class VoicePhishingDetector:
 
     def detect_comprehensive(self, text: str) -> Dict:
         """
-        종합 분석 - KoBERT 모델 (누적 분석용)
+        종합 분석 - TF-IDF+RF ML (누적 분석용)
 
-        여러 문장이 누적된 대화 전체를 KoBERT로 분석합니다.
+        여러 문장이 누적된 대화 전체를 ML로 분석합니다.
         정확도가 높지만 처리 시간이 필요합니다.
 
         Args:
@@ -310,7 +216,7 @@ class VoicePhishingDetector:
             Dict: 탐지 결과
                 - is_phishing: 보이스피싱 여부
                 - confidence: 예측 신뢰도
-                - method: 'kobert'
+                - method: 'tfidf_rf'
                 - analyzed_length: 분석한 텍스트 길이
 
         Example:
@@ -318,28 +224,21 @@ class VoicePhishingDetector:
             >>> result = detector.detect_comprehensive(accumulated)
             >>> print(result['is_phishing'])  # True/False
         """
-        if not text or len(text.strip()) < 10:
+        if not text or len(text.strip()) < self.comprehensive_min_chars:
             return {
                 'is_phishing': False,
                 'confidence': 0.0,
-                'method': 'kobert',
+                'method': 'tfidf_rf',
                 'analyzed_length': 0
             }
 
-        is_phishing, confidence = self._predict_kobert(text)
-        return {
-            'is_phishing': is_phishing,
-            'confidence': confidence,
-            'method': 'kobert',
-            'analyzed_length': len(text)
-        }
+        return self._get_ml_detector().predict(text, min_chars=self.comprehensive_min_chars)
 
     def detect(self, text: str) -> Dict:
         """
         전체 분석 (레거시 호환용)
 
-        KoBERT로 보이스피싱 여부를 판단하고,
-        보이스피싱으로 판단된 경우 위험도와 유형을 분석합니다.
+        ML로 보이스피싱 여부를 판단하고, 보이스피싱으로 판단된 경우 위험도와 유형을 분석합니다.
 
         Args:
             text: 분석할 텍스트
@@ -356,7 +255,7 @@ class VoicePhishingDetector:
             >>> if result['is_phishing']:
             >>>     print(f"위험도: {result['level']}, 유형: {result['phishing_type']}")
         """
-        if not text or len(text.strip()) < 10:
+        if not text or len(text.strip()) < self.comprehensive_min_chars:
             return {
                 'is_phishing': False,
                 'level': 0,
@@ -364,8 +263,7 @@ class VoicePhishingDetector:
                 'phishing_type': None
             }
 
-        # KoBERT로 보이스피싱 여부 판단
-        is_phishing, confidence = self._predict_kobert(text)
+        is_phishing, confidence = self._predict_ml(text)
 
         if is_phishing:
             # 보이스피싱으로 판단된 경우 위험도 계산
@@ -395,14 +293,14 @@ class HybridPhishingSession:
 
     실시간 음성 인식 스트리밍에 최적화된 하이브리드 탐지 방식:
     - 즉시 응답: 문장 단위 단어 기반 탐지 (빠름)
-    - 누적 분석: 누적 텍스트가 10자 이상일 때마다 KoBERT 분석 (정확함)
+    - 누적 분석: 누적 텍스트가 충분할 때마다 ML 분석
 
     Attributes:
         detector: VoicePhishingDetector 인스턴스
         window_size: 버퍼 크기 (문장 수)
         sentence_buffer: 최근 문장 버퍼
         accumulated_text: 누적된 전체 텍스트
-        kobert_result: 최근 KoBERT 분석 결과
+        comprehensive_result_cache: 최근 ML 종합 분석 결과
         sentence_count: 누적 문장 수
 
     Example:
@@ -412,7 +310,7 @@ class HybridPhishingSession:
         >>> # WebSocket에서 문장이 들어올 때마다
         >>> result = session.add_sentence("대출 상담 도와드리겠습니다")
         >>> print(result['immediate'])  # 즉시 응답
-        >>> print(result['comprehensive'])  # KoBERT 분석 (3문장 이상일 때)
+        >>> print(result['comprehensive'])  # ML 종합 분석
     """
 
     def __init__(self, detector: VoicePhishingDetector, window_size: int = 5):
@@ -427,11 +325,14 @@ class HybridPhishingSession:
         self.window_size = window_size
         self.sentence_buffer = deque(maxlen=window_size)
         self.accumulated_text = ""
-        self.kobert_result = None
+        self.comprehensive_result_cache = None
         self.sentence_count = 0
-        self.min_sentences_for_kobert = int(os.getenv("PHISHING_KOBERT_MIN_SENTENCES", "1"))
-        self.min_chars_for_kobert = int(os.getenv("PHISHING_KOBERT_MIN_CHARS", "6"))
-        self.kobert_threshold = self._float_env("PHISHING_KOBERT_THRESHOLD", 0.35)
+        self.min_sentences_for_ml = int(
+            os.getenv("PHONE_ML_MIN_SENTENCES", os.getenv("PHISHING_KOBERT_MIN_SENTENCES", "1"))
+        )
+        self.min_chars_for_ml = int(
+            os.getenv("PHONE_ML_MIN_CHARS", os.getenv("PHISHING_KOBERT_MIN_CHARS", "6"))
+        )
 
         # 실시간 누적 상태
         self.cumulative_probability = 0.0
@@ -559,7 +460,7 @@ class HybridPhishingSession:
         if not self.force_final_enabled:
             return False
         text = (sentence or "").strip()
-        if len(text) < self.min_chars_for_kobert:
+        if len(text) < self.min_chars_for_ml:
             return False
         if text[-1:] in {".", "!", "?", "다", "요"}:
             return True
@@ -587,7 +488,7 @@ class HybridPhishingSession:
         문장 추가 및 분석
 
         새로운 문장을 추가하고 즉시 단어 기반 분석을 수행합니다.
-        누적 텍스트가 충분해지면 KoBERT 종합 분석도 수행합니다.
+        누적 텍스트가 충분해지면 ML 종합 분석도 수행합니다.
 
         Args:
             sentence: 새로 추가할 문장
@@ -595,7 +496,7 @@ class HybridPhishingSession:
         Returns:
             Dict:
                 - immediate: 단어 기반 즉시 분석 결과
-                - comprehensive: KoBERT 종합 분석 결과 (누적 텍스트 10자 이상일 때)
+                - comprehensive: ML 종합 분석 결과
 
         Example:
             >>> result = session.add_sentence("계좌번호 알려주세요")
@@ -616,12 +517,15 @@ class HybridPhishingSession:
         # 즉시 응답 (단어 기반) - 항상 실행
         immediate_result = immediate_result or self.detector.detect_immediate(sentence)
 
-        # 누적 분석 (KoBERT) - 누적 텍스트 길이가 충분할 때마다 실행
+        # 누적 분석 (ML)
         comprehensive_result = None
         accumulated_text = self.accumulated_text.strip()
-        if (self.sentence_count >= max(1, self.min_sentences_for_kobert) or len(accumulated_text) >= self.min_chars_for_kobert):
+        if (
+            self.sentence_count >= max(1, self.min_sentences_for_ml)
+            or len(accumulated_text) >= self.min_chars_for_ml
+        ):
             comprehensive_result = self.detector.detect_comprehensive(accumulated_text)
-            self.kobert_result = comprehensive_result
+            self.comprehensive_result_cache = comprehensive_result
 
         return {
             'immediate': immediate_result,
@@ -630,18 +534,18 @@ class HybridPhishingSession:
 
     def get_latest_comprehensive(self) -> Optional[Dict]:
         """
-        가장 최근 KoBERT 분석 결과 반환
+        가장 최근 ML 종합 분석 결과 반환
 
         Returns:
             Optional[Dict]: 최근 종합 분석 결과 (없으면 None)
         """
-        return self.kobert_result
+        return self.comprehensive_result_cache
 
     def reset(self):
         """세션 초기화 (통화 종료 시 호출)"""
         self.sentence_buffer.clear()
         self.accumulated_text = ""
-        self.kobert_result = None
+        self.comprehensive_result_cache = None
         self.sentence_count = 0
         self.cumulative_probability = 0.0
         self.cumulative_keywords.clear()
