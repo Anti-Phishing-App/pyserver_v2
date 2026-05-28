@@ -8,7 +8,8 @@ from app.utils.file_handler import save_upload_file
 router = APIRouter()
 
 # AI 서버 주소는 환경변수로 주입합니다.
-AI_SERVER_URL = f"{AI_SERVER_BASE_URL.rstrip('/')}/analyze/document"
+# ai_server의 실제 문서 분석 엔드포인트는 /process-request 입니다.
+AI_SERVER_URL = f"{AI_SERVER_BASE_URL.rstrip('/')}/process-request"
 
 @router.post("/process-request")
 async def process_request(file: UploadFile = File(...)):

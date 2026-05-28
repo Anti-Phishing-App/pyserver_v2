@@ -6,7 +6,7 @@
 주요 기능:
     1. 텍스트 기반 분석 (/analyze)
        - 입력된 텍스트의 보이스피싱 여부 분석
-       - 하이브리드 탐지: 단어 기반 + KoBERT 딥러닝
+       - 하이브리드 탐지: 단어 기반 + TF-IDF+RF ML
 
     2. 음성 파일 분석 (/analyze-audio)
        - 음성 파일 → STT → 보이스피싱 탐지 (원스톱)
@@ -17,8 +17,8 @@
 
 분석 방법:
     - immediate: 단어 기반 즉시 분석 (빠름, 실시간 적합)
-    - comprehensive: KoBERT 종합 분석 (정확함, 누적 분석 적합)
-    - hybrid: 두 방법 모두 실행 (기본값, 추천)
+       - comprehensive: ML 종합 분석 (누적 분석 적합)
+    - hybrid: 두 방법 모두 실행 (기본값)
 
 실시간 스트리밍 탐지는 /ws/transcribe/stream (transcribe.py)에서 처리됩니다.
 """
@@ -47,7 +47,7 @@ async def analyze_text(request: TextAnalysisRequest):
 
     3가지 분석 방법 지원:
     - immediate: 단어 기반 즉시 분석 (빠름, 실시간 적합)
-    - comprehensive: KoBERT 기반 종합 분석 (정확함, 누적 분석 적합)
+    - comprehensive: TF-IDF+RF ML 종합 분석 (누적 분석 적합)
     - hybrid: 두 방법 모두 실행 (기본값)
 
     Args:
@@ -58,7 +58,7 @@ async def analyze_text(request: TextAnalysisRequest):
     Returns:
         AnalysisResponse:
             - immediate: 단어 기반 즉시 분석 결과
-            - comprehensive: KoBERT 종합 분석 결과
+            - comprehensive: ML 종합 분석 결과
             - warning_message: 경고 메시지
 
     Example:
@@ -89,12 +89,12 @@ async def analyze_text(request: TextAnalysisRequest):
             elif immediate_result.level == 1:
                 warning_message = "ℹ️ 주의: 일부 단어에 주의가 필요합니다."
 
-        # Comprehensive 분석 (KoBERT)
+        # Comprehensive 분석 (ML)
         if request.method in ["comprehensive", "hybrid"]:
             result = detector.detect_comprehensive(request.text)
             comprehensive_result = ComprehensiveResult(**result)
 
-            # KoBERT 결과에 따른 경고 메시지
+            # ML 결과에 따른 경고 메시지
             if comprehensive_result.is_phishing:
                 confidence_pct = comprehensive_result.confidence * 100
                 warning_message = f"🚨 보이스피싱 탐지! (신뢰도: {confidence_pct:.1f}%)"
@@ -226,7 +226,7 @@ async def analyze_audio_file(
                     "comprehensive": {
                         "is_phishing": False,
                         "confidence": 0.0,
-                        "method": "kobert",
+                        "method": "tfidf_rf",
                         "analyzed_length": len(text or ""),
                     },
                     "warning_message": short_msg,
@@ -308,11 +308,14 @@ async def health_check():
         dict: 서비스 상태 정보
     """
     try:
-        detector = get_detector()
+        from app.services.tfidf_phishing_ml import get_phone_ml_detector
+
+        ml = get_phone_ml_detector()
         return {
             "status": "ok",
-            "model_loaded": detector.model is not None,
-            "device": str(detector.device),
+            "phone_ml_model_loaded": True,
+            "phone_ml_threshold": ml.threshold,
+            "phone_ml_model_path": str(ml.model_path),
             "message": "보이스피싱 탐지 서비스가 정상 작동 중입니다."
         }
     except Exception as e:

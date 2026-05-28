@@ -178,7 +178,7 @@ async def _pump(ws: WebSocket, stt, session: HybridPhishingSession, client: str)
     """
     STT에서 (text, is_final) 스트림을 받아
     - partial: word 기반 즉시 분석만 수행해 전송
-    - final:   즉시 분석 + 누적(KoBERT) 분석까지 수행해 전송
+    - final:   즉시 분석 + 누적(ML) 분석까지 수행해 전송
     """
     try:
         async with stt:

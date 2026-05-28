@@ -6,7 +6,7 @@
 스키마 종류:
     - TextAnalysisRequest: 텍스트 분석 요청
     - ImmediateResult: 단어 기반 즉시 분석 결과
-    - ComprehensiveResult: KoBERT 기반 종합 분석 결과
+    - ComprehensiveResult: ML 기반 종합 분석 결과
     - AnalysisResponse: 전체 분석 응답
     - StreamAnalysisMessage: WebSocket 스트리밍 메시지
 """
@@ -30,10 +30,10 @@ class ImmediateResult(BaseModel):
 
 
 class ComprehensiveResult(BaseModel):
-    """종합 분석 결과 (KoBERT)"""
+    """종합 분석 결과 (TF-IDF+RF)"""
     is_phishing: bool = Field(..., description="보이스피싱 여부")
     confidence: float = Field(..., description="예측 신뢰도 (0.0-1.0)")
-    method: str = Field("kobert", description="분석 방법")
+    method: str = Field("tfidf_rf", description="분석 방법")
     analyzed_length: int = Field(..., description="분석한 텍스트 길이")
 
 
