@@ -1,2 +1,4 @@
 .env
 !.env.example
+model/call(KE)/call_koelectra_model_v3_imbalance_r5_r5_ext_v1_scale12000_aug/model.safetensors
+model/call(KE)/call_koelectra_model_v3_imbalance_r5_r5_ext_v1_scale12000_aug/training_args.bin
