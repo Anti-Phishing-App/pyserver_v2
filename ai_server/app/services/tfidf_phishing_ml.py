@@ -1,5 +1,8 @@
 """
-TF-IDF + RandomForest 피싱 텍스트 분류 (통화/SMS 공통)
+피싱 텍스트 분류 엔진 (통화/SMS 공통)
+
+- PHONE: TF-IDF+RF 또는 KoELECTRA 백엔드 선택 가능
+- SMS: 기존 TF-IDF+RF 유지
 """
 from __future__ import annotations
 
@@ -8,6 +11,8 @@ from pathlib import Path
 from typing import Dict, Optional
 
 import joblib
+import torch
+from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
@@ -68,6 +73,64 @@ class TfidfRfPhishingDetector:
         }
 
 
+class KoElectraPhishingDetector:
+    def __init__(
+        self,
+        model_dir: Path,
+        threshold_env: str,
+        default_threshold: float = 0.01,
+    ):
+        if not model_dir.is_dir():
+            raise FileNotFoundError(f"KoELECTRA 모델 디렉터리 없음: {model_dir}")
+
+        self.model_dir = model_dir
+        self.tokenizer = AutoTokenizer.from_pretrained(str(model_dir))
+        self.model = AutoModelForSequenceClassification.from_pretrained(str(model_dir))
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.model.to(self.device)
+        self.model.eval()
+
+        raw_threshold = os.getenv(threshold_env)
+        if raw_threshold is None and threshold_env == "PHONE_ML_THRESHOLD":
+            raw_threshold = os.getenv("PHISHING_KOBERT_THRESHOLD")
+        self.threshold = float(raw_threshold if raw_threshold is not None else default_threshold)
+
+    @staticmethod
+    def _normalize_text(text: str) -> str:
+        return " ".join((text or "").split())
+
+    def predict(self, text: str, min_chars: int = 1) -> Dict:
+        normalized = self._normalize_text(text)
+        if len(normalized) < min_chars:
+            return {
+                "is_phishing": False,
+                "confidence": 0.0,
+                "method": "koelectra",
+                "analyzed_length": len(normalized),
+            }
+
+        enc = self.tokenizer(
+            [normalized],
+            truncation=True,
+            padding=True,
+            max_length=128,
+            return_tensors="pt",
+        )
+        enc = {k: v.to(self.device) for k, v in enc.items()}
+        with torch.no_grad():
+            logits = self.model(**enc).logits
+            proba = torch.softmax(logits, dim=-1)[0, 1].item()
+
+        confidence = float(proba)
+        is_phishing = confidence >= self.threshold
+        return {
+            "is_phishing": is_phishing,
+            "confidence": confidence,
+            "method": "koelectra",
+            "analyzed_length": len(normalized),
+        }
+
+
 _phone_detector: Optional[TfidfRfPhishingDetector] = None
 _sms_detector: Optional[TfidfRfPhishingDetector] = None
 _phone_error: Optional[Exception] = None
@@ -81,15 +144,25 @@ def get_phone_ml_detector() -> TfidfRfPhishingDetector:
     if _phone_error is not None:
         raise _phone_error
     try:
-        model_dir = Path(os.getenv("PHONE_MODEL_DIR", BASE_DIR / "data/models/phone"))
-        _phone_detector = TfidfRfPhishingDetector(
-            model_path=Path(os.getenv("PHONE_MODEL_PATH", model_dir / "phone_phishing_model.pkl")),
-            vectorizer_path=Path(
-                os.getenv("PHONE_VECTORIZER_PATH", model_dir / "phone_tfidf_vectorizer.pkl")
-            ),
-            threshold_env="PHONE_ML_THRESHOLD",
-            default_threshold=0.5,
-        )
+        backend = os.getenv("PHONE_ML_BACKEND", "tfidf_rf").strip().lower()
+        if backend == "koelectra":
+            default_dir = BASE_DIR.parent / "model" / "call(KE)" / "call_koelectra_model_v3_imbalance_r5_r5_ext_v1_scale12000_aug"
+            model_dir = Path(os.getenv("PHONE_KE_MODEL_DIR", default_dir))
+            _phone_detector = KoElectraPhishingDetector(
+                model_dir=model_dir,
+                threshold_env="PHONE_ML_THRESHOLD",
+                default_threshold=0.01,
+            )
+        else:
+            model_dir = Path(os.getenv("PHONE_MODEL_DIR", BASE_DIR / "data/models/phone"))
+            _phone_detector = TfidfRfPhishingDetector(
+                model_path=Path(os.getenv("PHONE_MODEL_PATH", model_dir / "phone_phishing_model.pkl")),
+                vectorizer_path=Path(
+                    os.getenv("PHONE_VECTORIZER_PATH", model_dir / "phone_tfidf_vectorizer.pkl")
+                ),
+                threshold_env="PHONE_ML_THRESHOLD",
+                default_threshold=0.5,
+            )
         return _phone_detector
     except Exception as exc:
         _phone_error = exc

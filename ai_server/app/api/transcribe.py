@@ -245,16 +245,29 @@ async def websocket_transcribe_stream(websocket: WebSocket, lang: str = "ko-KR",
                                 try:
                                     result = phishing_session.add_sentence(text)
 
-                                    # 즉시 분석 결과 (단어 기반)
+                                    comprehensive_confidence = None
+                                    if result.get('comprehensive'):
+                                        comprehensive_confidence = float(result['comprehensive'].get('confidence', 0.0))
+
+                                    # 즉시 분석 결과 (단어 기반 근거)
                                     if result['immediate'] and result['immediate']['level'] > 0:
+                                        # 앱 표시 위험도는 모델 기반(0~100)으로 통일.
+                                        # comprehensive가 아직 없으면 규칙 기반 probability로 fallback.
+                                        model_risk_pct = (
+                                            comprehensive_confidence * 100.0
+                                            if comprehensive_confidence is not None
+                                            else float(result['immediate'].get('probability', 0.0))
+                                        )
                                         await websocket.send_json({
                                             "type": "phishing_alert",
                                             "alert_type": "immediate",
                                             "text": text,
                                             "risk_level": result['immediate']['level'],
-                                            "risk_probability": result['immediate']['score'],
+                                            "risk_probability": round(model_risk_pct, 2),
                                             "phishing_type": result['immediate'].get('phishing_type'),
-                                            "keywords": result['immediate'].get('keywords', [])
+                                            "keywords": result['immediate'].get('keywords', []),
+                                            "keyword_details": result['immediate'].get('keyword_details', []),
+                                            "risk_probability_source": "model" if comprehensive_confidence is not None else "rule_fallback",
                                         })
 
                                     # 종합 분석 결과 (KoBERT)

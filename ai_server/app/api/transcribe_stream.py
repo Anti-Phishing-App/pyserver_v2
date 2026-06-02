@@ -206,6 +206,7 @@ async def _pump(ws: WebSocket, stt, session: HybridPhishingSession, client: str)
 
                 comprehensive = fragment.get("comprehensive")
                 if comprehensive:
+                    model_risk_pct = round(float(comprehensive.get("confidence", 0.0)) * 100.0, 2)
                     await _send_json(
                         ws,
                         {
@@ -213,6 +214,8 @@ async def _pump(ws: WebSocket, stt, session: HybridPhishingSession, client: str)
                             "text": text,
                             "immediate": fragment["immediate"],
                             "comprehensive": comprehensive,  # is_phishing/confidence 포함
+                            "risk_probability": model_risk_pct,
+                            "risk_probability_source": "model",
                             "t": _now(),
                             "history": fragment.get("history"),
                         },
