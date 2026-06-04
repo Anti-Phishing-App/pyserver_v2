@@ -37,6 +37,10 @@ from app.schemas.voice_phishing import (
     ImmediateResult,
     ComprehensiveResult,
 )
+from app.api.voice_phishing_app_response import (
+    build_analyze_audio_response,
+    extract_stt_text,
+)
 from app.services.voice_phishing_service import get_detector
 from app.config import CLOVA_SPEECH_LONGFORM_INVOKE_URL, CLOVA_SPEECH_LONGFORM_SECRET_KEY
 
@@ -209,35 +213,15 @@ async def analyze_audio_file(
             except httpx.RequestError as e:
                 raise HTTPException(status_code=500, detail=f"CLOVA API 요청 실패: {e}")
 
-        # Step 2: 텍스트 추출
-        text = stt_result.get("text", "")
+        # Step 2: 텍스트 추출 (앱 Gson 호환 응답은 build_analyze_audio_response 사용)
+        text = extract_stt_text(stt_result)
         if not text or len(text) < 10:
-            # 모바일 앱 Gson 스키마와 동일한 형태 유지 (immediate/comprehensive 필수)
             short_msg = "텍스트가 너무 짧아서 분석할 수 없습니다 (최소 10자 필요)"
-            return {
-                "transcription": {
-                    "text": text,
-                    "confidence": stt_result.get("confidence"),
-                    "speaker": stt_result.get("speaker"),
-                    "stt_result": stt_result,
-                },
-                "phishing_analysis": {
-                    "immediate": {
-                        "level": 0,
-                        "probability": 0.0,
-                        "phishing_type": None,
-                        "keywords": [],
-                        "method": "word_based",
-                    },
-                    "comprehensive": {
-                        "is_phishing": False,
-                        "confidence": 0.0,
-                        "method": "tfidf_rf",
-                        "analyzed_length": len(text or ""),
-                    },
-                    "warning_message": short_msg,
-                },
-            }
+            return build_analyze_audio_response(
+                text=text,
+                stt_result=stt_result,
+                warning_message=short_msg,
+            )
 
         # Step 3: 보이스피싱 탐지
 
@@ -263,8 +247,8 @@ async def analyze_audio_file(
         try:
             comprehensive = detector.detect_comprehensive(text)
             comprehensive_result = ComprehensiveResult(**comprehensive)
-        except FileNotFoundError as e:
-            logger.warning("ML model unavailable for comprehensive analysis: %s", e)
+        except Exception as e:
+            logger.warning("ML comprehensive analysis failed (app-safe fallback): %s", e)
             comprehensive_result = ComprehensiveResult(
                 is_phishing=False,
                 confidence=0.0,
@@ -285,19 +269,13 @@ async def analyze_audio_file(
         print(f"   [RESULT] 서버 전체 처리 시간(STT+AI): {total_server_duration:.2f}ms" , flush=True)
         print(f"[PERF] === VOICE_ANALYSIS_REQUEST_END: {server_end_time} ===\n" , flush=True)
 
-        return {
-            "transcription": {
-                "text": text,
-                "confidence": stt_result.get("confidence"),
-                "speaker": stt_result.get("speaker"),
-                "stt_result": stt_result
-            },
-            "phishing_analysis": {
-                "immediate": immediate_result.model_dump() if immediate_result else None,
-                "comprehensive": comprehensive_result.model_dump() if comprehensive_result else None,
-                "warning_message": warning_message
-            }
-        }
+        return build_analyze_audio_response(
+            text=text,
+            stt_result=stt_result,
+            immediate=immediate_result,
+            comprehensive=comprehensive_result,
+            warning_message=warning_message,
+        )
 
     except HTTPException:
         raise
