@@ -1,4 +1,6 @@
 .env
 !.env.example
-model/call(KE)/call_koelectra_model_v3_imbalance_r5_r5_ext_v1_scale12000_aug/model.safetensors
-model/call(KE)/call_koelectra_model_v3_imbalance_r5_r5_ext_v1_scale12000_aug/training_args.bin
+
+# KoELECTRA weights (GitHub 100MB limit — deploy via zip/manual copy)
+model/call(KE)/**/model.safetensors
+model/call(KE)/**/training_args.bin
