@@ -24,6 +24,7 @@
 """
 import json
 import logging
+import os
 import asyncio
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 import httpx
@@ -309,11 +310,14 @@ async def health_check():
         from app.services.tfidf_phishing_ml import get_phone_ml_detector
 
         ml = get_phone_ml_detector()
+        model_path = str(getattr(ml, "model_dir", getattr(ml, "model_path", "unknown")))
+        backend = os.getenv("PHONE_ML_BACKEND", "koelectra")
         return {
             "status": "ok",
+            "phone_ml_backend": backend,
             "phone_ml_model_loaded": True,
             "phone_ml_threshold": ml.threshold,
-            "phone_ml_model_path": str(ml.model_path),
+            "phone_ml_model_path": model_path,
             "message": "보이스피싱 탐지 서비스가 정상 작동 중입니다."
         }
     except Exception as e:

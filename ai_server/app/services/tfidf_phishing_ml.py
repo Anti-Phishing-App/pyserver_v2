@@ -14,7 +14,25 @@ import joblib
 import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
+# ai_server/ (Docker WORKDIR /app)
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
+# pyserver/ repo root (model/ lives here on deploy hosts)
+REPO_ROOT = BASE_DIR.parent
+
+
+def _resolve_phone_koelectra_dir() -> Path:
+    """KoELECTRA 디렉터리: env > repo model/ > ai_server/model/."""
+    if raw := os.getenv("PHONE_KE_MODEL_DIR", "").strip():
+        return Path(raw)
+
+    candidates = [
+        REPO_ROOT / "model" / "call(KE)" / "call_koelectra_model_v3",
+        BASE_DIR / "model" / "call(KE)" / "call_koelectra_model_v3",
+    ]
+    for path in candidates:
+        if (path / "config.json").is_file():
+            return path
+    return candidates[0]
 
 
 class TfidfRfPhishingDetector:
@@ -144,16 +162,15 @@ def get_phone_ml_detector() -> TfidfRfPhishingDetector:
     if _phone_error is not None:
         raise _phone_error
     try:
-        backend = os.getenv("PHONE_ML_BACKEND", "tfidf_rf").strip().lower()
+        backend = os.getenv("PHONE_ML_BACKEND", "koelectra").strip().lower()
         if backend == "koelectra":
-            default_dir = BASE_DIR.parent / "model" / "call(KE)" / "call_koelectra_model_v3_imbalance_r5_r5_ext_v1_scale12000_aug"
-            model_dir = Path(os.getenv("PHONE_KE_MODEL_DIR", default_dir))
+            model_dir = _resolve_phone_koelectra_dir()
             _phone_detector = KoElectraPhishingDetector(
                 model_dir=model_dir,
                 threshold_env="PHONE_ML_THRESHOLD",
                 default_threshold=0.01,
             )
-        else:
+        elif backend in {"tfidf_rf", "rf"}:
             model_dir = Path(os.getenv("PHONE_MODEL_DIR", BASE_DIR / "data/models/phone"))
             _phone_detector = TfidfRfPhishingDetector(
                 model_path=Path(os.getenv("PHONE_MODEL_PATH", model_dir / "phone_phishing_model.pkl")),
@@ -162,6 +179,10 @@ def get_phone_ml_detector() -> TfidfRfPhishingDetector:
                 ),
                 threshold_env="PHONE_ML_THRESHOLD",
                 default_threshold=0.5,
+            )
+        else:
+            raise ValueError(
+                f"PHONE_ML_BACKEND must be 'koelectra' or 'tfidf_rf', got: {backend!r}"
             )
         return _phone_detector
     except Exception as exc:

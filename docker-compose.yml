@@ -31,6 +31,7 @@ services:
     volumes:
       - ./ai_server:/app
       - ./ai_server/data:/app/data
+      - ./model:/model:ro
     environment:
       - PUBLIC_WS_BASE=wss://gupi99.p-e.kr
       - CLOVA_SPEECH_LONGFORM_INVOKE_URL=${CLOVA_SPEECH_LONGFORM_INVOKE_URL}
@@ -41,7 +42,9 @@ services:
       - CLOVA_SECRET_KEY=${CLOVA_SECRET_KEY:-}
       - CLOVA_API_URL=${CLOVA_API_URL}
       - CLOVA_SECRET_KEY2=${CLOVA_SECRET_KEY2}
-      - PHONE_ML_THRESHOLD=0.5
+      - PHONE_ML_BACKEND=${PHONE_ML_BACKEND:-koelectra}
+      - PHONE_KE_MODEL_DIR=${PHONE_KE_MODEL_DIR:-/model/call(KE)/call_koelectra_model_v3}
+      - PHONE_ML_THRESHOLD=${PHONE_ML_THRESHOLD:-0.01}
       - SMS_ML_THRESHOLD=0.5
     restart: always
     networks:
