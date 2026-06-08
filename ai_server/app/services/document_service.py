@@ -1,4 +1,5 @@
 """문서 분석 서비스"""
+import os
 from pathlib import Path
 from fastapi import HTTPException
 
@@ -9,17 +10,21 @@ from app.ml.predictors.stamp_predictor import run_stamp_detection
 from app.ml.predictors.MunSeo_predictor import predict as run_forgery_detection
 
 
-def analyze_document(image_path: Path) -> dict:
+def analyze_document(image_path: Path, force: bool = False) -> dict:
     """
     문서 이미지 전체 분석
 
     Args:
         image_path: 분석할 이미지 경로
+        force:      True면 문서 판별 건너뛰고 바로 위조 분석
 
     Returns:
         분석 결과 딕셔너리
     """
     try:
+        # ── filename 추출 ─────────────────────────────────────────────
+        filename = os.path.basename(str(image_path))
+
         # ── 기존 분석 방식 (주석처리) ────────────────────────────────
         # stamp_result   = run_stamp_detection(str(image_path))
         # ocr_result     = run_ocr(str(image_path))
@@ -41,10 +46,12 @@ def analyze_document(image_path: Path) -> dict:
         # }
 
         # ── 새로운 분석 방식 (머신러닝 기반 위조 탐지) ───────────────
-        forgery_result = run_forgery_detection(str(image_path))
+        forgery_result = run_forgery_detection(str(image_path), force=force)
 
         return {
-            "forgery": forgery_result  # is_forged, result, score
+            "filename": filename,
+            "url":      f"/uploaded_images/{filename}",
+            "forgery":  forgery_result
         }
 
     except OCRError as e:
