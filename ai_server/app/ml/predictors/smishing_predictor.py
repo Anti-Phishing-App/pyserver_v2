@@ -82,9 +82,11 @@ class SmishingOverseerPredictor:
         
         vote_vector = np.array([rf_prob, svm_prob, nb_prob, lr_prob])
         features = np.array([self._analyze_features(full_text)])
-        pred_weights = self.overseer.predict(features)[0]
+
+        raw_weights = self.overseer.predict(features)
+        pred_weights = raw_weights[0] if raw_weights.ndim > 1 else raw_weights
         
         final_prob = float(np.sum(vote_vector * pred_weights))
         is_phishing = bool(final_prob >= self.threshold)
         
-        return {"is_phishing": is_phishing, "phishing_prob": round(final_prob, 4), "source": "overseer_ai"}
+        return {"is_phishing": is_phishing, "phishing_prob": float(round(final_prob, 4)), "source": "overseer_ai"}
