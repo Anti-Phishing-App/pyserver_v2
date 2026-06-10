@@ -104,10 +104,13 @@ async def detect_sms_phishing(request: SmsDetectRequest):
                 ml_is_phishing = False
                 ml_confidence = 0.0
                 try:
-                    ml_result = get_sms_ml_detector().predict(full_text, min_chars=5)
-                    ml_confidence = ml_result["confidence"]
-                    ml_is_phishing = ml_result["is_phishing"]
-                    ml_score = ml_confidence * 100
+                    # 🚨 모델이 없으므로 강제로 예외를 발생시켜 except 문으로 넘깁니다.
+                    raise FileNotFoundError("임시 조치: SMS 모델 없음 스킵")
+                    
+                    # ml_result = get_sms_ml_detector().predict(full_text, min_chars=5)
+                    # ml_confidence = ml_result["confidence"]
+                    # ml_is_phishing = ml_result["is_phishing"]
+                    # ml_score = ml_confidence * 100
                 except Exception as ml_error:
                     print(f"SMS ML 분석 실패 (키워드만 사용): {ml_error}")
 
