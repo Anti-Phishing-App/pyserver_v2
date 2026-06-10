@@ -114,9 +114,9 @@ async def detect_sms_phishing(request: SmsDetectRequest):
                 except Exception as ml_error:
                     print(f"SMS ML 분석 실패 (키워드만 사용): {ml_error}")
 
-                if ml_score > 0 or keyword_score > 0:
+                if ml_score > 0:
                     text_score = ml_score * 0.7 + keyword_score * 0.3
-                elif not keyword_result.get("error"):
+                else:
                     text_score = keyword_score
 
                 if text_score >= 70:
